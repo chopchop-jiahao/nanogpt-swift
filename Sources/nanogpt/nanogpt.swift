@@ -8,7 +8,14 @@ struct nanogpt {
     static func main() {
         let text = loadData()
         
-        print(text)
+        print("length of dataset in characters: \(text.count)")
+
+        print(text.prefix(1000))
+        
+        let chars = Set(text).sorted()
+        let vocabSize = chars.count
+        print("chars: \(chars)")
+        print("vocab size: \(vocabSize)")
     }
     
     private static func loadData() -> String {

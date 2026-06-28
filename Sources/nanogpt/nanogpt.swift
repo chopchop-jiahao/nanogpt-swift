@@ -3,7 +3,6 @@
 
 import Foundation
 
-@available(macOS 10.15, *)
 @main
 struct nanogpt {
     static func main() {

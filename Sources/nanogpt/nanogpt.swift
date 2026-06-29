@@ -2,6 +2,7 @@
 // https://docs.swift.org/swift-book
 
 import Foundation
+import MLX
 
 @main
 struct nanogpt {
@@ -17,10 +18,14 @@ struct nanogpt {
         print("chars: \(chars)")
         print("vocab size: \(vocabSize)")
         
-        let (stoi, itos) = buildDictionaries(from: chars)
+        let (stoi, itos) = buildMappings(from: chars)
         
         print(encode("hii there", using: stoi))
         print(decode(encode("hii there", using: stoi), using: itos))
+        
+        let data = makeDataTensor(from: text, using: stoi)
+        
+        printTensor(data, head: 1000)
     }
     
     private static func loadData() -> String {
@@ -32,7 +37,7 @@ struct nanogpt {
         return data
     }
     
-    private static func buildDictionaries(from chars: [Character]) -> (stoi: [Character : Int], itos: [Int : Character]){
+    private static func buildMappings(from chars: [Character]) -> (stoi: [Character : Int], itos: [Int : Character]){
         var stoi = [Character : Int]()
         var itos = [Int : Character]()
         for (i, char) in chars.enumerated() {
@@ -50,5 +55,17 @@ struct nanogpt {
     private static func decode(_ code: [Int], using dictionary: [Int : Character]) -> String {
         let charArray = code.compactMap { dictionary[$0] }
         return String(charArray)
+    }
+    
+    /// Encode text into an integer tensor (token ids) for the model to consume
+    private static func makeDataTensor(from text: String, using stoi: [Character: Int]) -> MLXArray {
+        MLXArray(encode(text, using: stoi))
+    }
+    
+    private static func printTensor(_ mlxAray: MLXArray, head: Int = 10) {
+        print("shape:", mlxAray.shape, " dtype:", mlxAray.dtype)
+        let n = min(head, mlxAray.shape[0])
+        let preview = mlxAray[0 ..< n].asArray(Int32.self)
+        print("first \(n):", preview)
     }
 }

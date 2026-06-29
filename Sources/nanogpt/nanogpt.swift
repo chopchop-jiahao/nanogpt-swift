@@ -26,6 +26,21 @@ struct nanogpt {
         let data = makeDataTensor(from: text, using: stoi)
         
         printTensor(data, head: 1000)
+        
+        let size = data.shape[0]
+        let trainSize = size * 9 / 10
+        let trainData = data[0..<trainSize]
+        let valData = data[trainSize..<size]
+        let blockSize = 8
+        let inputs = trainData[0..<blockSize]
+        let targets = trainData[1..<blockSize + 1]
+        
+        for i in 0..<blockSize {
+            let context = inputs[0...i].asArray(Int32.self)
+            let target = targets[i].item(Int32.self)
+            
+            print("whe input is \(context), the target is \(target)")
+        }
     }
     
     private static func loadData() -> String {

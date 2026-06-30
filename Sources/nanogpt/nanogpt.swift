@@ -6,8 +6,9 @@ import MLX
 
 @main
 struct nanogpt {
+    static let text = loadData()
+    
     static func main() {
-        let text = loadData()
         
         print("length of dataset in characters: \(text.count)")
 
@@ -27,20 +28,65 @@ struct nanogpt {
         
         printTensor(data, head: 1000)
         
+        let batchSize = 4
+        let blockSize = 8
+        
+        let (inputBatch, targetBatch) = getBatch(from: .training, using: stoi, batchSize: batchSize, blockSize: blockSize)
+        print("inputs: ")
+        print(inputBatch.shape)
+        print(inputBatch.asArray(Int32.self))
+        
+        print("targets: ")
+        print(targetBatch.shape)
+        print(targetBatch.asArray(Int32.self))
+        
+        
+        print("---")
+        
+        for b in 0..<batchSize {
+            for t in 0..<blockSize {
+                let context = inputBatch[b][0...t]
+                let target = targetBatch[b][t]
+                
+                print("when context is \(context.asArray(Int32.self)), target is \(target.item(Int32.self))")
+            }
+        }
+    }
+    
+    private static func getBatch(from dataset: Dataset, using stoi: [Character : Int], batchSize: Int, blockSize: Int) -> (MLXArray, MLXArray) {
+        let data = getData(from: dataset, using: stoi)
+        var inputRows = [MLXArray]()
+        var targetRows = [MLXArray]()
+        
+        for _ in 0..<batchSize {
+            let start = Int.random(in: 0..<data.shape[0] - blockSize)
+            
+            let inputs = data[start..<start + blockSize]
+            let targets = data[start + 1..<start + blockSize + 1]
+            
+            inputRows.append(inputs)
+            targetRows.append(targets)
+        }
+        
+        return (stacked(inputRows), stacked(targetRows))
+    }
+    
+    private static func getData(from dataset: Dataset, using stoi: [Character : Int]) -> MLXArray {
+        let data = makeDataTensor(from: text, using: stoi)
         let size = data.shape[0]
         let trainSize = size * 9 / 10
-        let trainData = data[0..<trainSize]
-        let valData = data[trainSize..<size]
-        let blockSize = 8
-        let inputs = trainData[0..<blockSize]
-        let targets = trainData[1..<blockSize + 1]
         
-        for i in 0..<blockSize {
-            let context = inputs[0...i].asArray(Int32.self)
-            let target = targets[i].item(Int32.self)
-            
-            print("whe input is \(context), the target is \(target)")
+        switch dataset {
+        case .training:
+            return data[0..<trainSize]
+        case .validation:
+            return data[trainSize..<size]
         }
+    }
+    
+    private enum Dataset {
+        case training
+        case validation
     }
     
     private static func loadData() -> String {

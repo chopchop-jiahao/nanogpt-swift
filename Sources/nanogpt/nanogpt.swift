@@ -3,6 +3,7 @@
 
 import Foundation
 import MLX
+import MLXNN
 
 @main
 struct nanogpt {
@@ -30,6 +31,7 @@ struct nanogpt {
         
         let batchSize = 4
         let blockSize = 8
+        MLXRandom.seed(1337)
         
         let (inputBatch, targetBatch) = getBatch(from: .training, using: stoi, batchSize: batchSize, blockSize: blockSize)
         print("inputs: ")
@@ -51,6 +53,38 @@ struct nanogpt {
                 print("when context is \(context.asArray(Int32.self)), target is \(target.item(Int32.self))")
             }
         }
+        
+        let model = BigramLanguageModel(vocabSize: vocabSize)
+        
+        let (logits, loss) = model(inputBatch, targetBatch)
+        
+        print("logits: \(logits.shape)")
+        print("loss: \(loss.item(Float.self))")
+    }
+    
+    private class BigramLanguageModel: Module {
+        let vocabSize: Int
+        let tokenEmbeddingTable: Embedding
+        
+        init(vocabSize: Int) {
+            self.vocabSize = vocabSize
+            self.tokenEmbeddingTable = Embedding(embeddingCount: vocabSize, dimensions: vocabSize)
+            super.init()
+        }
+        
+        func callAsFunction(_ inputs: MLXArray, _ targets: MLXArray) -> (MLXArray, MLXArray) {
+            let logits = tokenEmbeddingTable(inputs)
+            let b = logits.shape[0]
+            let t = logits.shape[1]
+            let c = logits.shape[2]
+            
+            let logitsFlat = logits.reshaped([b * t, c])
+            let targetsFlat = targets.reshaped([b * t])
+            
+            let loss = crossEntropy(logits: logitsFlat, targets: targetsFlat, reduction: .mean)
+            
+            return (logitsFlat, loss)
+        }
     }
     
     private static func getBatch(from dataset: Dataset, using stoi: [Character : Int], batchSize: Int, blockSize: Int) -> (MLXArray, MLXArray) {
@@ -59,7 +93,8 @@ struct nanogpt {
         var targetRows = [MLXArray]()
         
         for _ in 0..<batchSize {
-            let start = Int.random(in: 0..<data.shape[0] - blockSize)
+//            let start = Int.random(in: 0..<data.shape[0] - blockSize)
+            let start = MLXRandom.randInt(0 ..< data.shape[0] - blockSize).item(Int.self)
             
             let inputs = data[start..<start + blockSize]
             let targets = data[start + 1..<start + blockSize + 1]

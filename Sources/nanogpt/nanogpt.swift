@@ -59,7 +59,7 @@ struct nanogpt {
         let (logits, loss) = model(inputBatch, targetBatch)
         
         print("logits: \(logits.shape)")
-        print("loss: \(loss.item(Float.self))")
+        print("loss: \(String(describing: loss?.item(Float.self)))")
     }
     
     private class BigramLanguageModel: Module {
@@ -72,18 +72,55 @@ struct nanogpt {
             super.init()
         }
         
-        func callAsFunction(_ inputs: MLXArray, _ targets: MLXArray) -> (MLXArray, MLXArray) {
+        func callAsFunction(_ inputs: MLXArray, _ targets: MLXArray? = nil) -> (MLXArray, MLXArray?) {
             let logits = tokenEmbeddingTable(inputs)
-            let b = logits.shape[0]
-            let t = logits.shape[1]
-            let c = logits.shape[2]
             
-            let logitsFlat = logits.reshaped([b * t, c])
-            let targetsFlat = targets.reshaped([b * t])
-            
-            let loss = crossEntropy(logits: logitsFlat, targets: targetsFlat, reduction: .mean)
-            
-            return (logitsFlat, loss)
+            if let targets = targets {
+                let b = logits.shape[0]
+                let t = logits.shape[1]
+                let c = logits.shape[2]
+                
+                let logitsFlat = logits.reshaped([b * t, c])
+                let targetsFlat = targets.reshaped([b * t])
+                let loss = crossEntropy(logits: logitsFlat, targets: targetsFlat, reduction: .mean)
+                
+                return (logitsFlat, loss)
+            } else {
+                // generate needs the (B, T, C) shape
+                return (logits, nil)
+            }
+        }
+        
+        // Generate `maxNewToken` new tokens starting from `inputs`.
+        // `inputs` has shape (B, T): B sequences, each currently T tokens long.
+        // Each step appends ONE new token to every sequence, so T grows by 1 each loop.
+        private func generate(_ inputs: MLXArray, maxNewToken: Int) -> MLXArray {
+            // The parameter is a `let`, but we need to grow it each step, so copy into a `var`.
+            var inputs = inputs
+
+            for _ in 0..<maxNewToken {
+                // Run the model. With no targets it returns logits of shape (B, T, C) and a nil loss.
+                // logits = a score for every candidate character, at every position, for every sequence.
+                let (logits, _) = self(inputs)
+
+                // We only append to the END, so we only need the LAST position's scores.
+                // Index: B -> keep all (0...), T -> take only the last one (-1, this axis disappears), C -> keep all (0...)
+                // (B, T, C) -> (B, C)
+                let lastLogits = logits[0..., -1, 0...]
+
+                // Sample one token per sequence based on those scores.
+                // `categorical` applies softmax internally (scores -> probabilities) and then draws by probability,
+                // so we can feed raw logits directly. Result shape: (B,) — one token id per sequence.
+                let nextToken = MLXRandom.categorical(lastLogits)
+
+                // Glue the new token onto the end of each sequence.
+                // First add a trailing dimension so shapes line up: (B,) -> (B, 1)
+                // Then concatenate along axis 1 (the time axis): (B, T) + (B, 1) -> (B, T + 1)
+                inputs = concatenated([inputs, nextToken[0..., .newAxis]], axis: 1)
+            }
+
+            // Final shape: (B, T + maxNewToken)
+            return inputs
         }
     }
     
